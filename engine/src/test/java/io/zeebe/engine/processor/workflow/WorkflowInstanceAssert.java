@@ -84,7 +84,7 @@ public class WorkflowInstanceAssert
 
     final Long2ObjectHashMap<TypedRecord<WorkflowInstanceRecord>> recordsByPosition =
         new Long2ObjectHashMap<>();
-    actual.forEach(r -> recordsByPosition.put(((TypedEventImpl) r).getPosition(), r));
+    actual.forEach(r -> recordsByPosition.put(r.getPosition(), r));
 
     // - once a terminating record is written, there shall be no record with a greater getPosition
     // that
@@ -93,10 +93,8 @@ public class WorkflowInstanceAssert
     //   - is a non-terminating event
     final Optional<TypedRecord<WorkflowInstanceRecord>> firstViolatingRecord =
         actual.stream()
-            .filter(
-                r ->
-                    ((TypedEventImpl) r).getSourceEventPosition() > terminatingRecord.getPosition())
-            .map(r -> recordsByPosition.get(((TypedEventImpl) r).getSourceEventPosition()))
+            .filter(r -> r.getSourceEventPosition() > terminatingRecord.getPosition())
+            .map(r -> recordsByPosition.get(r.getSourceEventPosition()))
             .filter(r -> r.getValue().getFlowScopeKey() == instanceKey)
             .filter(r -> isFlowEvaluatingState(r.getMetadata().getIntent()))
             .findFirst();

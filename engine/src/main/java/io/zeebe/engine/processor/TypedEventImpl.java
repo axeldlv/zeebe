@@ -37,10 +37,12 @@ public class TypedEventImpl implements TypedRecord {
     return this.rawEvent.getMaxValueLength();
   }
 
+  @Override
   public long getPosition() {
     return rawEvent.getPosition();
   }
 
+  @Override
   public long getSourceEventPosition() {
     return rawEvent.getSourceEventPosition();
   }
