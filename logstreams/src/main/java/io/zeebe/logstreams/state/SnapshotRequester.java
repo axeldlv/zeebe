@@ -18,45 +18,54 @@ package io.zeebe.logstreams.state;
 import io.atomix.cluster.MemberId;
 import io.zeebe.distributedlog.restore.RestoreClient;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
 import org.slf4j.LoggerFactory;
 
 public class SnapshotRequester {
   private final RestoreClient client;
   private final ReplicationController processorSnapshotController;
+  private SnapshotReplication processorSnapshotReplicationConsumer;
   private final ReplicationController exporterSnapshotController;
-  private final Consumer<Long> processorSnapshotConsumer;
-  private final Consumer<Long> exporterSnapshotConsumer;
+  private SnapshotReplication exporterSnapshotReplicationConsumer;
 
   public SnapshotRequester(
       RestoreClient client,
-      ReplicationController processorSnapshotController,
-      ReplicationController exporterSnapshotController,
-      Consumer<Long> processorSnapshotConsumer,
-      Consumer<Long> exporterSnapshotConsumer) {
+      SnapshotReplication processorSnapshotReplicationConsumer,
+      SnapshotReplication exporterSnapshotReplicationConsumer,
+      StateStorage processorStorage,
+      StateStorage exporterStorage) {
     this.client = client;
-    this.processorSnapshotController = processorSnapshotController;
-    this.exporterSnapshotController = exporterSnapshotController;
-    this.processorSnapshotConsumer = processorSnapshotConsumer;
-    this.exporterSnapshotConsumer = exporterSnapshotConsumer;
+
+    this.processorSnapshotController =
+        new ReplicationController(
+            processorSnapshotReplicationConsumer, processorStorage, () -> {}, () -> -1L);
+    this.processorSnapshotReplicationConsumer = processorSnapshotReplicationConsumer;
+
+    this.exporterSnapshotController =
+        new ReplicationController(
+            exporterSnapshotReplicationConsumer, exporterStorage, () -> {}, () -> -1L);
+    this.exporterSnapshotReplicationConsumer = exporterSnapshotReplicationConsumer;
   }
 
   public CompletableFuture<Long> getLatestSnapshotsFrom(
       MemberId server, boolean getExporterSnapshot) {
+
+    processorSnapshotController.consumeReplicatedSnapshots(pos -> {});
+    exporterSnapshotController.consumeReplicatedSnapshots(pos -> {});
+
     CompletableFuture<Long> replicated = CompletableFuture.completedFuture(null);
 
     if (getExporterSnapshot) {
       final CompletableFuture<Long> exporterFuture = new CompletableFuture<>();
       exporterSnapshotController.addListener(
           new DefaultSnapshotReplicationListener(
-              exporterSnapshotController, exporterFuture, exporterSnapshotConsumer));
+              exporterSnapshotController, exporterSnapshotReplicationConsumer, exporterFuture));
       replicated = replicated.thenCompose((nothing) -> exporterFuture);
     }
 
     final CompletableFuture<Long> future = new CompletableFuture<>();
     processorSnapshotController.addListener(
         new DefaultSnapshotReplicationListener(
-            processorSnapshotController, future, processorSnapshotConsumer));
+            processorSnapshotController, processorSnapshotReplicationConsumer, future));
     replicated = replicated.thenCompose((nothing) -> future);
 
     client.requestLatestSnapshot(server);
@@ -65,27 +74,27 @@ public class SnapshotRequester {
 
   static class DefaultSnapshotReplicationListener implements SnapshotReplicationListener {
     private final ReplicationController controller;
+    private SnapshotReplication consumer;
     private final CompletableFuture<Long> future;
-    private Consumer<Long> snapshotConsumer;
 
     DefaultSnapshotReplicationListener(
         ReplicationController controller,
-        CompletableFuture<Long> future,
-        Consumer<Long> snapshotConsumer) {
+        SnapshotReplication consumer,
+        CompletableFuture<Long> future) {
       this.controller = controller;
+      this.consumer = consumer;
       this.future = future;
-      this.snapshotConsumer = snapshotConsumer;
     }
 
     @Override
     public void onReplicated(long snapshotPosition) {
       LoggerFactory.getLogger("Restore").info("Replicated snapshot {}", snapshotPosition);
       try {
-        snapshotConsumer.accept(snapshotPosition);
         future.complete(snapshotPosition);
       } catch (Exception e) {
         future.completeExceptionally(e);
       }
+      consumer.close();
       controller.removeListener(this);
     }
 

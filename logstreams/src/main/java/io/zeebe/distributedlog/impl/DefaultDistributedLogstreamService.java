@@ -281,12 +281,7 @@ public class DefaultDistributedLogstreamService
     final LogReplicator logReplicator =
         new LogReplicator(this, restoreClient, restoreThreadContext, LOG);
     final SnapshotRestoreStrategy snapshotRestoreStrategy =
-        new SnapshotRestoreStrategy(
-            restoreClient,
-            partitionId,
-            logStream,
-            logReplicator,
-            LogstreamConfig.getConfig(localMemberId, partitionId).join());
+        new SnapshotRestoreStrategy(restoreClient, partitionId, logStream, logReplicator);
     final RestoreNodeProvider nodeProvider =
         new CyclicPartitionNodeProvider(clusterContext, getLocalMemberId());
 

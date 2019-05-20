@@ -61,7 +61,7 @@ public class BrokerSnapshotRestoreContext implements SnapshotRestoreContext {
     final StorageConfiguration configuration =
         LogstreamConfig.getConfig(localMemberId, partitionId).join();
     return new StateStorageFactory(configuration.getStatesDirectory())
-        .create(partitionId, EngineService.PROCESSOR_NAME);
+        .create(partitionId, EngineService.PROCESSOR_NAME, "-restore-log");
   }
 
   @Override
@@ -70,7 +70,9 @@ public class BrokerSnapshotRestoreContext implements SnapshotRestoreContext {
         LogstreamConfig.getConfig(localMemberId, partitionId).join();
     return new StateStorageFactory(configuration.getStatesDirectory())
         .create(
-            ExporterManagerService.EXPORTER_PROCESSOR_ID, ExporterManagerService.PROCESSOR_NAME);
+            ExporterManagerService.EXPORTER_PROCESSOR_ID,
+            ExporterManagerService.PROCESSOR_NAME,
+            "-restore-log");
   }
 
   @Override
