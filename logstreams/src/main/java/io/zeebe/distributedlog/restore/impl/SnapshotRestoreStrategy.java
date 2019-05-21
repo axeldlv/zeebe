@@ -26,7 +26,6 @@ import io.zeebe.logstreams.state.SnapshotRequester;
 import io.zeebe.logstreams.state.StateStorage;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
-import org.slf4j.LoggerFactory;
 
 public class SnapshotRestoreStrategy implements RestoreStrategy {
 
@@ -82,22 +81,32 @@ public class SnapshotRestoreStrategy implements RestoreStrategy {
   }
 
   private CompletableFuture<Long> onSnapshotsReplicated() {
-    final long lastEventPosition =
-        Math.max(
-            latestLocalPosition,
-            getValidSnapshotPosition()); // if exporter position is behind local logstream
+    final Supplier<Long> exporterPositionSupplier =
+        restoreContext.getExporterPositionSupplier(exporterStorage);
+    final Supplier<Long> processedPositionSupplier =
+        restoreContext.getProcessorPositionSupplier(partitionId, processorStorage);
+    final long latestProcessedPosition = processedPositionSupplier.get();
+    final long exporterPosition = exporterPositionSupplier.get();
+
+    long fromPosition =
+        getFirstEventToBeReplicated(exporterPosition, latestProcessedPosition, backupPosition);
+    long toPosition = getLastEventToBeReplicated(latestProcessedPosition, backupPosition);
     // logStream.delete(lastEventPosition); //TODO
-    LoggerFactory.getLogger("Snapshot restore")
-        .info("Snapshot replicated {}, backup position {}", lastEventPosition, backupPosition);
-    if (lastEventPosition < backupPosition) {
-      return logReplicator.replicate(server, lastEventPosition, backupPosition, true);
-    } else {
-      return logReplicator.replicate(
-          server,
-          lastEventPosition,
-          lastEventPosition,
-          true); // replicate one event for the snapshot to be useable
+    return logReplicator.replicate(server, fromPosition, toPosition, true);
+  }
+
+  private long getFirstEventToBeReplicated(
+      long exporterPosition, long processedPosition, long backupPosition) {
+
+    long requiredFirstEventPosition = Math.min(backupPosition, processedPosition);
+    if (exporterPosition > 0) {
+      requiredFirstEventPosition = Math.min(requiredFirstEventPosition, exporterPosition);
     }
+    return requiredFirstEventPosition;
+  }
+
+  private long getLastEventToBeReplicated(long processedPosition, long backupPosition) {
+    return Math.max(processedPosition, backupPosition);
   }
 
   private long getValidSnapshotPosition() {

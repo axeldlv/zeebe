@@ -158,6 +158,7 @@ public class RestoreTest {
     restoreClient.setRestoreInfoResponse(defaultRestoreInfoResponse);
 
     snapshotRestoreContext.setProcessorPositionSupplier(() -> snapshotPosition);
+    snapshotRestoreContext.setExporterPositionSupplier(() -> snapshotPosition);
 
     distributedLog.restore(snapshotPosition);
 
@@ -185,6 +186,7 @@ public class RestoreTest {
     restoreClient.setRestoreInfoResponse(defaultRestoreInfoResponse);
 
     snapshotRestoreContext.setProcessorPositionSupplier(() -> snapshotPosition);
+    snapshotRestoreContext.setExporterPositionSupplier(() -> snapshotPosition);
 
     // when
     distributedLog.restore(backupPosition);
@@ -213,6 +215,7 @@ public class RestoreTest {
     restoreClient.setRestoreInfoResponse(defaultRestoreInfoResponse);
 
     snapshotRestoreContext.setProcessorPositionSupplier(() -> snapshotPosition);
+    snapshotRestoreContext.setExporterPositionSupplier(() -> snapshotPosition);
 
     // when
     distributedLog.restore(backupPosition);
@@ -223,6 +226,61 @@ public class RestoreTest {
             Arrays.stream(receiverStorage.getSnapshotsDirectory().listFiles())
                 .anyMatch(f -> f.getName().equals(String.valueOf(snapshotPosition))))
         .isTrue();
+  }
+
+  @Test
+  public void shouldRestoreFromLatestExportedPosition() {
+    // given
+    final int numEventsExported = 5;
+    final int numEventsNotExported = 10;
+
+    // On server
+    final long exporterPosition = writerServer.writeEvents(numEventsExported, EVENT);
+    final long backupPosition = writerServer.writeEvents(numEventsNotExported, EVENT);
+    replicatorSnapshotController.takeSnapshot(backupPosition);
+
+    // On restoring client
+    final DefaultRestoreInfoResponse defaultRestoreInfoResponse = new DefaultRestoreInfoResponse();
+    defaultRestoreInfoResponse.setReplicationTarget(ReplicationTarget.SNAPSHOT);
+    restoreClient.setRestoreInfoResponse(defaultRestoreInfoResponse);
+
+    snapshotRestoreContext.setProcessorPositionSupplier(() -> backupPosition);
+    snapshotRestoreContext.setExporterPositionSupplier(() -> exporterPosition);
+
+    // when
+    distributedLog.restore(backupPosition);
+
+    // then
+    assertThat(readerClient.readEvents().size()).isEqualTo(1 + numEventsNotExported);
+  }
+
+  @Test
+  public void shouldRestoreEventsBetweenExporterAndSnapshotPosition() {
+    // given
+    final int numEventsExported = 5;
+    final int numEventsNotExportedInBackup = 10;
+    final int numEventsNotExportedAfterBackup = 2;
+
+    // On server
+    final long exporterPosition = writerServer.writeEvents(numEventsExported, EVENT);
+    final long backupPosition = writerServer.writeEvents(numEventsNotExportedInBackup, EVENT);
+    final long snapshotPosition = writerServer.writeEvents(numEventsNotExportedAfterBackup, EVENT);
+    replicatorSnapshotController.takeSnapshot(snapshotPosition);
+
+    // On restoring client
+    final DefaultRestoreInfoResponse defaultRestoreInfoResponse = new DefaultRestoreInfoResponse();
+    defaultRestoreInfoResponse.setReplicationTarget(ReplicationTarget.SNAPSHOT);
+    restoreClient.setRestoreInfoResponse(defaultRestoreInfoResponse);
+
+    snapshotRestoreContext.setProcessorPositionSupplier(() -> snapshotPosition);
+    snapshotRestoreContext.setExporterPositionSupplier(() -> exporterPosition);
+
+    // when
+    distributedLog.restore(backupPosition);
+
+    // then
+    assertThat(readerClient.readEvents().size())
+        .isEqualTo(1 + numEventsNotExportedInBackup + numEventsNotExportedAfterBackup);
   }
 
   protected static final class Replicator implements SnapshotReplication {
