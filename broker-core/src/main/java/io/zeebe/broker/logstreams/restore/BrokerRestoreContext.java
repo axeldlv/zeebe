@@ -85,9 +85,9 @@ public class BrokerRestoreContext implements AutoCloseable {
   private BrokerRestoreServer createServer() {
     return new BrokerRestoreServer(
         communicationService,
-        BrokerRestoreClientFactory.getLogReplicationTopic(partitionId),
-        BrokerRestoreClientFactory.getRestoreInfoTopic(partitionId),
-        BrokerRestoreClientFactory.getSnapshotRequestTopic(partitionId),
-        BrokerRestoreClientFactory.getSnapshotInfoRequestTopic(partitionId));
+        BrokerRestoreFactory.getLogReplicationTopic(partitionId),
+        BrokerRestoreFactory.getRestoreInfoTopic(partitionId),
+        BrokerRestoreFactory.getSnapshotRequestTopic(partitionId),
+        BrokerRestoreFactory.getSnapshotInfoRequestTopic(partitionId));
   }
 }

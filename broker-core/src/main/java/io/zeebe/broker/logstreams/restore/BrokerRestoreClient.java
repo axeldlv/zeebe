@@ -20,7 +20,6 @@ package io.zeebe.broker.logstreams.restore;
 import io.atomix.cluster.MemberId;
 import io.atomix.cluster.messaging.ClusterCommunicationService;
 import io.atomix.cluster.messaging.ClusterEventService;
-import io.atomix.primitive.partition.Partition;
 import io.zeebe.distributedlog.restore.RestoreClient;
 import io.zeebe.distributedlog.restore.RestoreInfoRequest;
 import io.zeebe.distributedlog.restore.RestoreInfoResponse;
@@ -28,13 +27,11 @@ import io.zeebe.distributedlog.restore.log.LogReplicationRequest;
 import io.zeebe.distributedlog.restore.log.LogReplicationResponse;
 import io.zeebe.distributedlog.restore.snapshot.SnapshotRestoreContext;
 import java.time.Duration;
-import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 
 public class BrokerRestoreClient implements RestoreClient {
   private static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofSeconds(5);
   private final ClusterCommunicationService communicationService;
-  private final Partition partition;
   private final String logReplicationTopic;
   private final String restoreInfoTopic;
   private final String snapshotRequestTopic;
@@ -45,7 +42,6 @@ public class BrokerRestoreClient implements RestoreClient {
   public BrokerRestoreClient(
       ClusterCommunicationService communicationService,
       String localMemberId,
-      Partition partition,
       String logReplicationTopic,
       String restoreInfoTopic,
       String snapshotRequestTopic,
@@ -53,17 +49,11 @@ public class BrokerRestoreClient implements RestoreClient {
       ClusterEventService eventService) {
     this.communicationService = communicationService;
     this.localMemberId = localMemberId;
-    this.partition = partition;
     this.logReplicationTopic = logReplicationTopic;
     this.restoreInfoTopic = restoreInfoTopic;
     this.snapshotRequestTopic = snapshotRequestTopic;
     this.snapshotInfoRequestTopic = snapshotInfoRequestTopic;
     this.eventService = eventService;
-  }
-
-  @Override
-  public Collection<MemberId> getPartitionMembers() {
-    return partition.members();
   }
 
   @Override

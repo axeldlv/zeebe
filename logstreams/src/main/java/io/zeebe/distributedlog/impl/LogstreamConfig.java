@@ -17,7 +17,7 @@ package io.zeebe.distributedlog.impl;
 
 import io.zeebe.distributedlog.StorageConfiguration;
 import io.zeebe.distributedlog.StorageConfigurationManager;
-import io.zeebe.distributedlog.restore.RestoreClientFactory;
+import io.zeebe.distributedlog.restore.RestoreFactory;
 import io.zeebe.logstreams.log.LogStream;
 import io.zeebe.logstreams.spi.SnapshotController;
 import io.zeebe.servicecontainer.ServiceContainer;
@@ -32,8 +32,7 @@ public class LogstreamConfig {
   private static final Map<String, StorageConfigurationManager> CONFIGS = new ConcurrentHashMap<>();
   private static final Map<String, LogStream> LOGSTREAMS = new ConcurrentHashMap<>();
   // TODO: Move everything needed for Restoring logstream to a RestoreContext
-  private static final Map<String, RestoreClientFactory> RESTORE_CLIENT_FACTORIES =
-      new ConcurrentHashMap<>();
+  private static final Map<String, RestoreFactory> RESTORE_FACTORIES = new ConcurrentHashMap<>();
   private static final Map<String, SnapshotController> PROCESSOR_SNAPSHOT_CONTROLLER =
       new ConcurrentHashMap<>();
   private static final Map<String, SnapshotController> EXPORTER_SNAPSHOT_CONTROLLER =
@@ -63,20 +62,16 @@ public class LogstreamConfig {
     return LOGSTREAMS.get(key(nodeId, partitionId));
   }
 
-  public static RestoreClientFactory getRestoreClientFactory(String nodeId) {
-    return RESTORE_CLIENT_FACTORIES.get(nodeId);
+  public static RestoreFactory getRestoreFactory(String nodeId) {
+    return RESTORE_FACTORIES.get(nodeId);
   }
 
-  public static RestoreClientFactory getRestoreClientFactory(String nodeId, int partitionId) {
-    return RESTORE_CLIENT_FACTORIES.get(nodeId);
+  public static void putRestoreFactory(String nodeId, RestoreFactory provider) {
+    RESTORE_FACTORIES.put(nodeId, provider);
   }
 
-  public static void putRestoreClientFactory(String nodeId, RestoreClientFactory provider) {
-    RESTORE_CLIENT_FACTORIES.put(nodeId, provider);
-  }
-
-  public static void removeRestoreClientFactory(String nodeId) {
-    RESTORE_CLIENT_FACTORIES.remove(nodeId);
+  public static void removeRestoreFactory(String nodeId) {
+    RESTORE_FACTORIES.remove(nodeId);
   }
 
   public static void putProcesorSnapshotController(

@@ -19,18 +19,10 @@ import io.atomix.cluster.MemberId;
 import io.zeebe.distributedlog.restore.log.LogReplicationRequest;
 import io.zeebe.distributedlog.restore.log.LogReplicationResponse;
 import io.zeebe.distributedlog.restore.snapshot.SnapshotRestoreContext;
-import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 
 public interface RestoreClient {
   CompletableFuture<Integer> requestSnapshotInfo(MemberId server);
-
-  /**
-   * Returns a list of potential restore servers; may contain itself.
-   *
-   * @return potential restore servers
-   */
-  Collection<MemberId> getPartitionMembers();
 
   /**
    * Requests the latest snapshot from the server.
