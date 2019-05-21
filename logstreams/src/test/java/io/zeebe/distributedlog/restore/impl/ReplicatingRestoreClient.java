@@ -21,66 +21,57 @@ import io.zeebe.distributedlog.restore.RestoreInfoRequest;
 import io.zeebe.distributedlog.restore.RestoreInfoResponse;
 import io.zeebe.distributedlog.restore.log.LogReplicationRequest;
 import io.zeebe.distributedlog.restore.log.LogReplicationResponse;
+import io.zeebe.distributedlog.restore.log.impl.DefaultLogReplicationRequestHandler;
 import io.zeebe.distributedlog.restore.snapshot.SnapshotRestoreContext;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import io.zeebe.logstreams.log.LogStream;
+import io.zeebe.logstreams.state.StateSnapshotController;
 import java.util.concurrent.CompletableFuture;
 
-public class ControllableRestoreClient implements RestoreClient {
-  private final Map<Long, CompletableFuture<LogReplicationResponse>> logReplicationRequests =
-      new HashMap<>();
+public class ReplicatingRestoreClient implements RestoreClient {
+
+  private final SnapshotRestoreContext snapshotRestoreContext;
+  private final StateSnapshotController replicatorSnapshotController;
+  private final LogStream serverLogstream;
+  private RestoreInfoResponse restoreInfoResponse;
+
+  public ReplicatingRestoreClient(
+      SnapshotRestoreContext snapshotRestoreContext,
+      StateSnapshotController serverSnapshotController,
+      LogStream serverLogstream) {
+    this.snapshotRestoreContext = snapshotRestoreContext;
+    this.replicatorSnapshotController = serverSnapshotController;
+    this.serverLogstream = serverLogstream;
+  }
+
+  public void setRestoreInfoResponse(RestoreInfoResponse restoreInfoResponse) {
+    this.restoreInfoResponse = restoreInfoResponse;
+  }
 
   @Override
   public CompletableFuture<Integer> requestSnapshotInfo(MemberId server) {
-    throw new UnsupportedOperationException("Not yet implemented");
+    return CompletableFuture.completedFuture(1);
   }
 
   @Override
   public void requestLatestSnapshot(MemberId server) {
-    throw new UnsupportedOperationException("Not yet implemented");
-  }
-
-  public List<LogReplicationRequest> requestLog = new ArrayList<>();
-
-  public List<LogReplicationRequest> getRequestLog() {
-    return requestLog;
+    replicatorSnapshotController.replicateLatestSnapshot(Runnable::run);
   }
 
   @Override
   public CompletableFuture<LogReplicationResponse> requestLogReplication(
       MemberId server, LogReplicationRequest request) {
-    final CompletableFuture<LogReplicationResponse> result = new CompletableFuture<>();
-    logReplicationRequests.put(request.getFromPosition(), result);
-    requestLog.add(request);
-    return result;
+    return CompletableFuture.completedFuture(
+        new DefaultLogReplicationRequestHandler(serverLogstream).onReplicationRequest(request));
   }
 
   @Override
   public CompletableFuture<RestoreInfoResponse> requestRestoreInfo(
       MemberId server, RestoreInfoRequest request) {
-    throw new UnsupportedOperationException("Not yet implemented");
+    return CompletableFuture.completedFuture(restoreInfoResponse);
   }
 
   @Override
   public SnapshotRestoreContext createSnapshotRestoreContext() {
-    throw new UnsupportedOperationException("Not yet implemented");
-  }
-
-  public void completeLogReplication(long from, Throwable ex) {
-    logReplicationRequests.get(from).completeExceptionally(ex);
-  }
-
-  public void completeLogReplication(long from, LogReplicationResponse response) {
-    logReplicationRequests.get(from).complete(response);
-  }
-
-  public Map<Long, CompletableFuture<LogReplicationResponse>> getLogReplicationRequests() {
-    return logReplicationRequests;
-  }
-
-  public void reset() {
-    logReplicationRequests.clear();
+    return snapshotRestoreContext;
   }
 }

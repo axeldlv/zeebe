@@ -65,8 +65,8 @@ public class SnapshotRestoreStrategy implements RestoreStrategy {
     this.requester =
         new SnapshotRequester(
             client,
-            exporterSnapshotReplicationConsumer,
             processorSnapshotReplicationConsumer,
+            exporterSnapshotReplicationConsumer,
             processorStorage,
             exporterStorage);
   }

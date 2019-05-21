@@ -50,11 +50,11 @@ public class SnapshotRequester {
       MemberId server, boolean getExporterSnapshot) {
 
     processorSnapshotController.consumeReplicatedSnapshots(pos -> {});
-    exporterSnapshotController.consumeReplicatedSnapshots(pos -> {});
 
     CompletableFuture<Long> replicated = CompletableFuture.completedFuture(null);
 
     if (getExporterSnapshot) {
+      exporterSnapshotController.consumeReplicatedSnapshots(pos -> {});
       final CompletableFuture<Long> exporterFuture = new CompletableFuture<>();
       exporterSnapshotController.addListener(
           new DefaultSnapshotReplicationListener(

@@ -65,18 +65,20 @@ public class DefaultDistributedLogstreamService
   private long lastPosition;
   private ServiceContainer serviceContainer;
   private ThreadContext restoreThreadContext;
+  private String localMemberId;
 
   public DefaultDistributedLogstreamService(DistributedLogstreamServiceConfig config) {
     super(DistributedLogstreamType.instance(), DistributedLogstreamClient.class);
     lastPosition = -1;
   }
 
-  public DefaultDistributedLogstreamService(LogStream logStream) {
+  public DefaultDistributedLogstreamService(LogStream logStream, String localMemberId) {
     super(DistributedLogstreamType.instance(), DistributedLogstreamClient.class);
     this.logStream = logStream;
     this.logStorage = this.logStream.getLogStorage();
     this.logName = logStream.getLogName();
     restoreThreadContext = new SingleThreadContext(String.format("log-restore-%s-%%d", logName));
+    this.localMemberId = localMemberId;
 
     initLastPosition();
   }
@@ -130,7 +132,7 @@ public class DefaultDistributedLogstreamService
     final String[] splitted = logServiceName.split("-");
     partitionId = Integer.parseInt(splitted[splitted.length - 1]);
 
-    final String localMemberId = getLocalMemberId().id();
+    localMemberId = getLocalMemberId().id();
     serviceContainer = LogstreamConfig.getServiceContainer(localMemberId);
 
     if (serviceContainer.hasService(LogStreamServiceNames.logStreamServiceName(logServiceName))) {
@@ -244,6 +246,14 @@ public class DefaultDistributedLogstreamService
   @Override
   public void restore(BackupInput backupInput) {
     final long backupPosition = backupInput.readLong();
+    restore(backupPosition);
+
+    LOG.debug("Restored local log to position {}", lastPosition);
+    currentLeader = backupInput.readString();
+    currentLeaderTerm = backupInput.readLong();
+  }
+
+  public void restore(long backupPosition) {
     if (lastPosition < backupPosition) {
       final long latestLocalPosition = lastPosition;
 
@@ -265,16 +275,12 @@ public class DefaultDistributedLogstreamService
           LOG.error(
               "Failed to restore log from {} to {}, retrying from {}",
               latestLocalPosition,
-              backupInput,
+              backupPosition,
               lastPosition,
               e);
         }
       }
     }
-
-    LOG.debug("Restored local log to position {}", lastPosition);
-    currentLeader = backupInput.readString();
-    currentLeaderTerm = backupInput.readLong();
   }
 
   private void updateCommitPosition(long commitPosition) {
@@ -284,7 +290,6 @@ public class DefaultDistributedLogstreamService
   }
 
   private DefaultStrategyPicker buildRestoreStrategyPicker() {
-    final String localMemberId = getLocalMemberId().id();
     final RestoreFactory clientFactory = LogstreamConfig.getRestoreFactory(localMemberId);
     final RestoreClient restoreClient = clientFactory.createClient(partitionId);
     final LogReplicator logReplicator =
