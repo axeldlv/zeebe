@@ -23,7 +23,6 @@ import io.zeebe.distributedlog.restore.log.LogReplicationRequest;
 import io.zeebe.distributedlog.restore.log.LogReplicationResponse;
 import io.zeebe.distributedlog.restore.snapshot.SnapshotRestoreContext;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,11 +31,6 @@ import java.util.concurrent.CompletableFuture;
 public class ControllableRestoreClient implements RestoreClient {
   private final Map<Long, CompletableFuture<LogReplicationResponse>> logReplicationRequests =
       new HashMap<>();
-
-  @Override
-  public Collection<MemberId> getPartitionMembers() {
-    throw new UnsupportedOperationException("Not yet implemented");
-  }
 
   @Override
   public CompletableFuture<Integer> requestSnapshotInfo(MemberId server) {

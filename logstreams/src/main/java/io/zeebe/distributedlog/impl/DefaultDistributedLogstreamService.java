@@ -20,7 +20,6 @@ import io.atomix.primitive.service.BackupInput;
 import io.atomix.primitive.service.BackupOutput;
 import io.atomix.primitive.service.ServiceExecutor;
 import io.atomix.primitive.service.impl.DefaultServiceExecutor;
-import io.atomix.protocols.raft.cluster.impl.RaftClusterContext;
 import io.atomix.protocols.raft.impl.RaftContext;
 import io.atomix.protocols.raft.service.RaftServiceContext;
 import io.atomix.utils.concurrent.SingleThreadContext;
@@ -30,10 +29,9 @@ import io.zeebe.distributedlog.DistributedLogstreamService;
 import io.zeebe.distributedlog.DistributedLogstreamType;
 import io.zeebe.distributedlog.StorageConfiguration;
 import io.zeebe.distributedlog.restore.RestoreClient;
-import io.zeebe.distributedlog.restore.RestoreClientFactory;
+import io.zeebe.distributedlog.restore.RestoreFactory;
 import io.zeebe.distributedlog.restore.RestoreNodeProvider;
 import io.zeebe.distributedlog.restore.RestoreStrategy;
-import io.zeebe.distributedlog.restore.impl.CyclicPartitionNodeProvider;
 import io.zeebe.distributedlog.restore.impl.DefaultStrategyPicker;
 import io.zeebe.distributedlog.restore.impl.SnapshotRestoreStrategy;
 import io.zeebe.distributedlog.restore.log.LogReplicationAppender;
@@ -67,7 +65,6 @@ public class DefaultDistributedLogstreamService
   private long lastPosition;
   private ServiceContainer serviceContainer;
   private ThreadContext restoreThreadContext;
-  private RaftClusterContext clusterContext;
 
   public DefaultDistributedLogstreamService(DistributedLogstreamServiceConfig config) {
     super(DistributedLogstreamType.instance(), DistributedLogstreamClient.class);
@@ -111,7 +108,6 @@ public class DefaultDistributedLogstreamService
       name = raftContext.getName();
       raft.setAccessible(false);
       context.setAccessible(false);
-      clusterContext = raftContext.getCluster();
     } catch (IllegalAccessException | NoSuchFieldException e) {
       throw new RuntimeException(e);
     }
@@ -275,8 +271,7 @@ public class DefaultDistributedLogstreamService
 
   private DefaultStrategyPicker buildRestoreStrategyPicker() {
     final String localMemberId = getLocalMemberId().id();
-    final RestoreClientFactory clientFactory =
-        LogstreamConfig.getRestoreClientFactory(localMemberId);
+    final RestoreFactory clientFactory = LogstreamConfig.getRestoreFactory(localMemberId);
     final RestoreClient restoreClient = clientFactory.createClient(partitionId);
     final LogReplicator logReplicator =
         new LogReplicator(this, restoreClient, restoreThreadContext, LOG);
@@ -287,8 +282,7 @@ public class DefaultDistributedLogstreamService
             logStream,
             logReplicator,
             LogstreamConfig.getConfig(localMemberId, partitionId).join());
-    final RestoreNodeProvider nodeProvider =
-        new CyclicPartitionNodeProvider(clusterContext, getLocalMemberId());
+    final RestoreNodeProvider nodeProvider = clientFactory.createNodeProvider(partitionId);
 
     return new DefaultStrategyPicker(
         restoreClient, nodeProvider, logReplicator, snapshotRestoreStrategy, restoreThreadContext);
