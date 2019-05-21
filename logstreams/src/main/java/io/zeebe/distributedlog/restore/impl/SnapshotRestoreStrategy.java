@@ -16,20 +16,14 @@
 package io.zeebe.distributedlog.restore.impl;
 
 import io.atomix.cluster.MemberId;
-import io.zeebe.distributedlog.StorageConfiguration;
 import io.zeebe.distributedlog.restore.RestoreClient;
 import io.zeebe.distributedlog.restore.RestoreStrategy;
 import io.zeebe.distributedlog.restore.log.LogReplicator;
 import io.zeebe.distributedlog.restore.snapshot.SnapshotRestoreContext;
 import io.zeebe.logstreams.log.LogStream;
-import io.zeebe.logstreams.state.ReplicationController;
 import io.zeebe.logstreams.state.SnapshotReplication;
 import io.zeebe.logstreams.state.SnapshotRequester;
 import io.zeebe.logstreams.state.StateStorage;
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import org.slf4j.LoggerFactory;
@@ -43,10 +37,7 @@ public class SnapshotRestoreStrategy implements RestoreStrategy {
   private int partitionId;
   private final LogStream logStream;
   private final LogReplicator logReplicator;
-  private StorageConfiguration configuration;
   private long backupPosition;
-  private ReplicationController processorSnapshotReplication;
-  private ReplicationController exporterSnapshotReplication;
   private SnapshotReplication processorSnapshotReplicationConsumer;
   private SnapshotReplication exporterSnapshotReplicationConsumer;
   private StateStorage exporterStorage;
@@ -54,85 +45,62 @@ public class SnapshotRestoreStrategy implements RestoreStrategy {
   private StateStorage processorStorage;
 
   public SnapshotRestoreStrategy(
-      RestoreClient client,
-      int partitionId,
-      LogStream logStream,
-      LogReplicator logReplicator,
-      StorageConfiguration configuration) {
+      RestoreClient client, int partitionId, LogStream logStream, LogReplicator logReplicator) {
     this.client = client;
     this.restoreContext = client.createSnapshotRestoreContext();
     this.partitionId = partitionId;
     this.logStream = logStream;
     this.logReplicator = logReplicator;
-    this.configuration = configuration;
-    getSnapshotControllers(client);
+    initializeSnapshotRequester(client);
   }
 
-  private void getSnapshotControllers(RestoreClient client) {
+  private void initializeSnapshotRequester(RestoreClient client) {
     exporterSnapshotReplicationConsumer =
         restoreContext.createExporterSnapshotReplicationConsumer(partitionId);
     processorSnapshotReplicationConsumer =
         restoreContext.createProcessorSnapshotReplicationConsumer(partitionId);
-    final StateStorage processorTmpStorage =
-        createTmpStateDirectory(configuration.getStatesDirectory().toString(), "processor");
-    final StateStorage exporterTmpStorage =
-        createTmpStateDirectory(configuration.getStatesDirectory().toString(), "exporter");
-
-    processorSnapshotReplication =
-        new ReplicationController(
-            processorSnapshotReplicationConsumer, processorTmpStorage, () -> {}, () -> -1L);
-
-    exporterStorage = restoreContext.getExporterStateStorage(partitionId);
-    exporterSnapshotReplication =
-        new ReplicationController(
-            exporterSnapshotReplicationConsumer, exporterTmpStorage, () -> {}, () -> -1L);
-
     processorStorage = restoreContext.getProcessorStateStorage(partitionId);
+    exporterStorage = restoreContext.getExporterStateStorage(partitionId);
+
     this.requester =
         new SnapshotRequester(
             client,
-            processorSnapshotReplication,
-            exporterSnapshotReplication,
-            pos -> moveValidSnapshot(pos, processorTmpStorage, processorStorage),
-            pos -> moveValidSnapshot(pos, exporterTmpStorage, exporterStorage));
+            exporterSnapshotReplicationConsumer,
+            processorSnapshotReplicationConsumer,
+            processorStorage,
+            exporterStorage);
   }
 
   @Override
   public CompletableFuture<Long> executeRestoreStrategy() {
     final CompletableFuture<Long> replicated = CompletableFuture.completedFuture(null);
-    processorSnapshotReplication.consumeReplicatedSnapshots(pos -> {});
-    exporterSnapshotReplication.consumeReplicatedSnapshots(pos -> {});
+
     return replicated
         .thenCompose(nothing -> client.requestSnapshotInfo(server))
         .thenCompose(numSnapshots -> requester.getLatestSnapshotsFrom(server, numSnapshots > 1))
-        .thenCompose(this::onSnapshotsReplicated);
+        .thenCompose(pos -> onSnapshotsReplicated());
   }
 
-  private CompletableFuture<Long> onSnapshotsReplicated(long processorSnapshotPosition) {
-    processorSnapshotReplicationConsumer.close();
-    exporterSnapshotReplicationConsumer.close();
+  private CompletableFuture<Long> onSnapshotsReplicated() {
     final long lastEventPosition =
         Math.max(
             latestLocalPosition,
-            getValidSnapshotPosition(
-                processorSnapshotPosition)); // if exporter position is behind local logstream
+            getValidSnapshotPosition()); // if exporter position is behind local logstream
     // logStream.delete(lastEventPosition); //TODO
     LoggerFactory.getLogger("Snapshot restore")
         .info("Snapshot replicated {}, backup position {}", lastEventPosition, backupPosition);
-    // Replicate events including lastEventPosition
     if (lastEventPosition < backupPosition) {
-      return logReplicator.replicate(server, lastEventPosition, backupPosition);
+      return logReplicator.replicate(server, lastEventPosition, backupPosition, true);
     } else {
-      // TODO
-      /* return logReplicator.replicate(
-      server,
-      lastEventPosition,
-      lastEventPosition); // replicate one event for the snapshot to be useable */
-      return CompletableFuture.completedFuture(lastEventPosition);
+      return logReplicator.replicate(
+          server,
+          lastEventPosition,
+          lastEventPosition,
+          true); // replicate one event for the snapshot to be useable
     }
   }
 
-  private long getValidSnapshotPosition(long processorSnapshotPosition) {
+  private long getValidSnapshotPosition() {
     final Supplier<Long> exporterPositionSupplier =
         restoreContext.getExporterPositionSupplier(exporterStorage);
     final Supplier<Long> processedPositionSupplier =
@@ -153,27 +121,6 @@ public class SnapshotRestoreStrategy implements RestoreStrategy {
 
   public void setServer(MemberId server) {
     this.server = server;
-  }
-
-  private StateStorage createTmpStateDirectory(final String rootDirectory, final String name) {
-    final File processorDirectory = new File(rootDirectory, "restore-" + name);
-    if (!processorDirectory.exists()) {
-      processorDirectory.mkdirs();
-    }
-    return new StateStorage(processorDirectory.toString());
-  }
-
-  private void moveValidSnapshot(
-      long snapshotPosition, StateStorage tmpStorage, StateStorage storage) {
-    try {
-      Files.move(
-          tmpStorage.getSnapshotDirectoryFor(snapshotPosition).toPath(),
-          storage.getSnapshotDirectoryFor(snapshotPosition).toPath());
-    } catch (FileAlreadyExistsException e) {
-
-    } catch (IOException e) {
-      throw new RuntimeException(e);
-    }
   }
 
   public void setLatestLocalPosition(long latestLocalPosition) {
