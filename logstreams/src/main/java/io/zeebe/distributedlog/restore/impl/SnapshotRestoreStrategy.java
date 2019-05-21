@@ -89,20 +89,17 @@ public class SnapshotRestoreStrategy implements RestoreStrategy {
     final long exporterPosition = exporterPositionSupplier.get();
 
     final long fromPosition =
-        getFirstEventToBeReplicated(exporterPosition, latestProcessedPosition, backupPosition);
+        getFirstEventToBeReplicated(exporterPosition, latestProcessedPosition);
     final long toPosition = getLastEventToBeReplicated(latestProcessedPosition, backupPosition);
     // logStream.delete(lastEventPosition); //TODO
     return logReplicator.replicate(server, fromPosition, toPosition, true);
   }
 
-  private long getFirstEventToBeReplicated(
-      long exporterPosition, long processedPosition, long backupPosition) {
-
-    long requiredFirstEventPosition = Math.min(backupPosition, processedPosition);
+  private long getFirstEventToBeReplicated(long exporterPosition, long processedPosition) {
     if (exporterPosition > 0) {
-      requiredFirstEventPosition = Math.min(requiredFirstEventPosition, exporterPosition);
+      return Math.min(processedPosition, exporterPosition);
     }
-    return requiredFirstEventPosition;
+    return processedPosition;
   }
 
   private long getLastEventToBeReplicated(long processedPosition, long backupPosition) {
