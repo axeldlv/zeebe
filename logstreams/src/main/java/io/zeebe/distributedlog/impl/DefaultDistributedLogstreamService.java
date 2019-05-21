@@ -74,6 +74,16 @@ public class DefaultDistributedLogstreamService
     lastPosition = -1;
   }
 
+  public DefaultDistributedLogstreamService(LogStream logStream) {
+    super(DistributedLogstreamType.instance(), DistributedLogstreamClient.class);
+    this.logStream = logStream;
+    this.logStorage = this.logStream.getLogStorage();
+    this.logName = logStream.getLogName();
+    restoreThreadContext = new SingleThreadContext(String.format("log-restore-%s-%%d", logName));
+
+    initLastPosition();
+  }
+
   @Override
   protected void configure(ServiceExecutor executor) {
     super.configure(executor);
@@ -151,18 +161,22 @@ public class DefaultDistributedLogstreamService
               .build()
               .join();
     }
-    this.logStorage = this.logStream.getLogStorage();
 
     LogstreamConfig.putLogStream(localMemberId, partitionId, logStream);
 
+    this.logStorage = this.logStream.getLogStorage();
+    initLastPosition();
+
+    LOG.info("Logstreams created. last appended event at position {}", lastPosition);
+  }
+
+  private void initLastPosition() {
     final BufferedLogStreamReader reader = new BufferedLogStreamReader(logStream);
     reader.seekToLastEvent();
     lastPosition =
         Math.max(
             logStream.getCommitPosition(),
             reader.getPosition()); // position of last event which is committed
-
-    LOG.info("Logstreams created. last appended event at position {}", lastPosition);
   }
 
   @Override

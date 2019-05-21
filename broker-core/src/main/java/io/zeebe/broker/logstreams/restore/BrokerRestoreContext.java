@@ -18,7 +18,6 @@
 package io.zeebe.broker.logstreams.restore;
 
 import io.atomix.cluster.messaging.ClusterCommunicationService;
-import io.zeebe.distributedlog.impl.LogstreamConfig;
 import io.zeebe.distributedlog.restore.RestoreServer;
 import io.zeebe.distributedlog.restore.RestoreServer.LogReplicationRequestHandler;
 import io.zeebe.distributedlog.restore.RestoreServer.RestoreInfoRequestHandler;
@@ -44,14 +43,6 @@ public class BrokerRestoreContext implements AutoCloseable {
     this.partitionId = partitionId;
     this.localMemberId = localMemberId;
     this.communicationService = communicationService;
-  }
-
-  public void setProcessorSnapshotController(SnapshotController snapshotController) {
-    LogstreamConfig.putProcesorSnapshotController(localMemberId, partitionId, snapshotController);
-  }
-
-  public void setExporterSnapshotController(SnapshotController snapshotController) {
-    LogstreamConfig.putExporterSnapshotController(localMemberId, partitionId, snapshotController);
   }
 
   @Override
